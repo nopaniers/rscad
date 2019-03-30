@@ -161,37 +161,37 @@ impl fmt::Display for Point
 
 
 
-
 //------------------------------------------------------------------------------
-// Triangles
+// Objects
 //------------------------------------------------------------------------------
 
 #[derive(Clone, Copy)]
-struct Triangle {
-   vertex: [Point; 3]
+struct Face {
+  normal: Vector,
+  vertex: [Point; 3],
+  colour: Colour
 }
 
 
-impl Triangle {
+impl Face {
 
-   fn new(p1: Point, p2: Point, p3: Point) -> Triangle {
-      Triangle{ vertex: [p1, p2, p3] }
-   }
-
-   fn invert(&mut self) {
-      // Swaps points 1 and 2 so that the normal points the other way
-      let (p1, p2) = (self.vertex[1], self.vertex[2]);
-      self.vertex[1] = p2;
-      self.vertex[2] = p1;
-   }
+  fn new(p1: Point, p2: Point, p3: Point) -> Triangle {
+    Face{ vertex: [p1, p2, p3] }
+  }
+  
+  fn invert(&mut self) {
+    // Swaps points 1 and 2 so that the normal points the other way
+    let (p1, p2) = (self.vertex[1], self.vertex[2]);
+    self.vertex[1] = p2;
+    self.vertex[2] = p1;
+  }
 }
 
 
+impl Add<Vector> for Face {
+   type Output = Face;
 
-impl Add<Vector> for Triangle {
-   type Output = Triangle;
-
-   fn add(self, vector: Vector) -> Triangle {
+   fn add(self, vector: Vector) -> Face {
       let mut tri = self.clone();
       for vertex in &mut tri.vertex {
          *vertex += vector;
@@ -201,7 +201,7 @@ impl Add<Vector> for Triangle {
 }
 
 
-impl AddAssign<Vector> for Triangle {
+impl AddAssign<Vector> for Face {
    fn add_assign(&mut self, vector: Vector) {
       for vertex in &mut self.vertex {
          *vertex += vector;
@@ -210,7 +210,7 @@ impl AddAssign<Vector> for Triangle {
 }
 
 
-impl MulAssign<Length> for Triangle {
+impl MulAssign<Length> for Face {
    fn mul_assign(&mut self, scale: Length) {
       for vertex in &mut self.vertex {
          *vertex *= scale;
@@ -219,38 +219,20 @@ impl MulAssign<Length> for Triangle {
 }
 
 
-impl fmt::Display for Triangle
+impl fmt::Display for Face
 {
-   // Display a Block in text output
-   fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-
-      write!(fmt, "{p1} -- {p2} -- {p3}", p1=self.vertex[0],
-             p2=self.vertex[1], p3=self.vertex[2])?;
-      
-      Ok(())
-   }
+  // Display a Block in text output
+  fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    
+    write!(fmt, "{p1} -- {p2} -- {p3}", p1=self.vertex[0],
+           p2=self.vertex[1], p3=self.vertex[2])?;
+    
+    Ok(())
+  }
 }
 
 
 
-//------------------------------------------------------------------------------
-// Objects
-//------------------------------------------------------------------------------
-
-#[derive(Clone, Copy)]
-struct Face {
-   normal: Vector,
-   triangle: Triangle,
-   colour: Colour
-}
-
-
-impl Face {
-
-   fn invert(&mut self) {
-      self.triangle.invert();
-   }
-}
 
 
 #[derive(Clone, Copy)]
