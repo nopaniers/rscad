@@ -9,13 +9,15 @@
 //
 //==============================================================================
 
+#![allow(dead_code)]
+
 use std::ops::{Add, Sub, Neg, Div, AddAssign, MulAssign};
 use std::f32::consts::{PI};
 use std::fs::File;
 
 #[macro_use]
 extern crate itertools;
-use itertools::{zip, interleave};
+use itertools::{zip};
 
 extern crate byteorder;
 use std::io::{Result, Write};
@@ -167,18 +169,22 @@ impl fmt::Display for Point
 
 #[derive(Clone, Copy)]
 struct Face {
-  normal: Vector,
-  vertex: [Point; 3],
-  colour: Colour
+   normal: Vector,
+   vertex: [Point; 3],
+   colour: Colour
 }
 
 
 impl Face {
-
-  fn new(p1: Point, p2: Point, p3: Point) -> Triangle {
-    Face{ vertex: [p1, p2, p3] }
-  }
-  
+   
+   fn new(p1: Point, p2: Point, p3: Point) -> Face {
+      Face {
+         normal: Vector {x: 0.0, y: 0.0, z: 1.0},
+         colour: Colour {r: 0, g: 0, b: 0, alpha: 0},
+         vertex: [p1, p2, p3]
+      }
+   }
+   
   fn invert(&mut self) {
     // Swaps points 1 and 2 so that the normal points the other way
     let (p1, p2) = (self.vertex[1], self.vertex[2]);
@@ -268,9 +274,9 @@ impl Object {
       let mut obj = Object::new();
       
       for (p2, p3) in zip(&spokes, &spokes[1..]) {
-         obj += Triangle::new(*centre, *p3, *p2);
+         obj += Face::new(*centre, *p3, *p2);
       }
-      obj += Triangle::new(*centre,
+      obj += Face::new(*centre,
                            *spokes.first().unwrap(),
                            *spokes.last().unwrap());
       
@@ -320,11 +326,11 @@ impl Object {
       for (top, top_next, bottom, bottom_next)
          in izip!(&top_points, &top_points[1..],
                   &bottom_points, &bottom_points[1..]) {
-            obj += Triangle::new(*bottom, *top_next, *top);
-            obj += Triangle::new(*bottom, *bottom_next, *top_next);
+            obj += Face::new(*bottom, *top_next, *top);
+            obj += Face::new(*bottom, *bottom_next, *top_next);
       }
-      obj += Triangle::new(top_points[0], top_points[4], bottom_points[4]);
-      obj += Triangle::new(bottom_points[4], bottom_points[0], top_points[0]);
+      obj += Face::new(top_points[0], top_points[4], bottom_points[4]);
+      obj += Face::new(bottom_points[4], bottom_points[0], top_points[0]);
       
       obj.scale(radius);
       obj
@@ -335,18 +341,18 @@ impl Object {
       let mut sphere = Object::new();
 
       for face in obj.faces {
-         let tri = face.triangle.vertex;
+         let tri = face.vertex;
 
          for index in 0..3 {
             let (v0, v1, v2) = (tri[index], tri[(index+1)%3], tri[(index+2)%3]);
 
-            sphere += Triangle::new(v0,
+            sphere += Face::new(v0,
                                     ((v0+v1)/2.0).normalize(),
                                     ((v0+v2)/2.0).normalize());
          }
 
          let (v0, v1, v2) = (tri[0], tri[1], tri[2]);
-         sphere += Triangle::new(((v0+v1)/2.0).normalize(),
+         sphere += Face::new(((v0+v1)/2.0).normalize(),
                                  ((v1+v2)/2.0).normalize(),
                                  ((v0+v2)/2.0).normalize());
       }
@@ -423,7 +429,7 @@ impl Object {
       for face in &mut self.faces.clone() {
          face.invert();
          // let mut new_face: Face = face;
-         face.triangle += offset;
+         *face += offset;
          self.faces.push(*face);
       }
    }
@@ -467,13 +473,13 @@ impl AddAssign<Object> for Object {
 }
 
 
-impl AddAssign<Triangle> for Object {
-   fn add_assign(&mut self, triangle: Triangle) {
-      let face = Face {
+impl AddAssign<Face> for Object {
+   fn add_assign(&mut self, face: Face) {
+      /* let face = Face {
          normal: Vector {x: 0.0, y: 0.0, z: 1.0},
          triangle: triangle,
          colour: Colour {r: 0, g: 0, b: 0, alpha: 0}
-      };
+      }; */
       self.faces.push(face);
    }
 }
@@ -485,7 +491,7 @@ impl Add<Vector> for Object {
    fn add(self, vector: Vector) -> Object {
       let mut obj = self.clone();
       for face in &mut obj.faces {
-         face.triangle += vector;
+         *face += vector;
       }
       obj
    }
@@ -495,7 +501,7 @@ impl Add<Vector> for Object {
 impl AddAssign<Vector> for Object {
    fn add_assign(&mut self, vector: Vector) {
       for face in &mut self.faces {
-         face.triangle += vector;
+         *face += vector;
       }  
    }
 }
@@ -503,7 +509,7 @@ impl AddAssign<Vector> for Object {
 impl MulAssign<Length> for Object {
    fn mul_assign(&mut self, scale: Length) {
       for face in &mut self.faces {
-         face.triangle *= scale;
+         *face *= scale;
       }  
    }
 }
@@ -564,7 +570,7 @@ impl Shape {
       let p1 = vertices[0];
       
       for (p2, p3) in zip(&vertices[1..], &vertices[2..]) {
-         shape += Triangle::new(p1, *p2, *p3);
+         shape += Face::new(p1, *p2, *p3);
       }
       
       shape
@@ -583,7 +589,7 @@ impl fmt::Display for Shape
    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 
       for face in &self.faces {
-         write!(fmt, "{face}\n", face = face.triangle)?;
+         write!(fmt, "{face}\n", face = face)?;
       }
       
       Ok(())
@@ -614,10 +620,10 @@ fn write_stl(filename: &str, obj: &Object)  -> std::io::Result<()>
    buffer.write_all(&[0_u8; 80])?;
    buffer.write_u32::<LittleEndian>(obj.faces.len() as u32)?;
    
-   // Write the triangles' vertices
+   // Write the vertices
    for face in &obj.faces {
       write_point(&buffer, &face.normal)?;
-      for vertex in face.triangle.vertex.iter() {
+      for vertex in face.vertex.iter() {
          write_point(&buffer, &vertex)?;
       }
       buffer.write_u16::<LittleEndian>(0)?;
@@ -642,7 +648,7 @@ fn write_text_stl(filename: &str, obj: &Object) -> std::io::Result<()>
    for face in &obj.faces {
       writeln!(buffer, "facet normal {normal}", normal=face.normal)?;
       writeln!(buffer, "  outer loop")?;
-      for point in face.triangle.vertex.iter() {
+      for point in face.vertex.iter() {
          writeln!(buffer, "    vertex {point}", point=point)?;
       }
       writeln!(buffer, "  endloop")?;
@@ -676,7 +682,8 @@ fn main() {
    write_text_stl("test.stl", &rectangle);
    */
    
-   let object = Object::cylinder(10.0, 10.0);
+   // let object = Object::cylinder(10.0, 10.0);
+   let object = Object::sphere(1.0);
    // println!("{}", circle);
    write_stl("test_bin.stl", &object);
 
