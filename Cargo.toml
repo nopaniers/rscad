@@ -1,0 +1,8 @@
+[package]
+name = "rscad"
+version = "0.0.1"
+authors = ["Charles Hill <cdhill@unimelb.edu.au>"]
+
+[dependencies]
+itertools = "0.7.8"
+byteorder = "*"
