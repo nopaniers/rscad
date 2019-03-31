@@ -26,7 +26,6 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use std::fmt;
 
 
-
 //==============================================================================
 // Options
 //==============================================================================
@@ -161,6 +160,36 @@ impl fmt::Display for Point
 }
 
 
+//------------------------------------------------------------------------------
+// Edges
+//------------------------------------------------------------------------------
+
+struct Edge {
+   from: Point,
+   to: Point
+}
+
+impl Edge {
+
+   fn new(from: Point, to: Point) -> Edge {
+      Edge {
+         from: from,
+         to: to
+      }
+   }  
+}
+
+
+impl fmt::Display for Edge
+{
+   // Display a Block in text output
+   fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+
+      write!(fmt, "({from})  --> ({to})", from=self.from, to=self.to)?;
+      
+      Ok(())
+   }
+}
 
 
 //------------------------------------------------------------------------------
@@ -179,18 +208,30 @@ impl Face {
    
    fn new(p1: Point, p2: Point, p3: Point) -> Face {
       Face {
-         normal: Vector {x: 0.0, y: 0.0, z: 1.0},
          colour: Colour {r: 0, g: 0, b: 0, alpha: 0},
-         vertex: [p1, p2, p3]
+         vertex: [p1, p2, p3],
+         normal: ((p3-p1).cross(p2-p1).normalize())
       }
    }
    
-  fn invert(&mut self) {
-    // Swaps points 1 and 2 so that the normal points the other way
-    let (p1, p2) = (self.vertex[1], self.vertex[2]);
-    self.vertex[1] = p2;
-    self.vertex[2] = p1;
-  }
+   fn invert(&mut self) {
+      // Swaps points 1 and 2 so that the normal points the other way
+      let (p1, p2) = (self.vertex[1], self.vertex[2]);
+      self.vertex[1] = p2;
+      self.vertex[2] = p1;
+      self.normal = -self.normal;
+   }
+   
+   fn inverted(&self) -> Face {
+      let mut face = self.clone();
+      face.invert();
+      face
+   }
+
+   fn edges(&self) -> FaceEdgeIter {
+      FaceEdgeIter { index:0, face: *self }
+   }
+
 }
 
 
@@ -239,6 +280,31 @@ impl fmt::Display for Face
 
 
 
+//------------------------------------------------------------------------------
+// Edges of Face
+//------------------------------------------------------------------------------
+
+struct FaceEdgeIter {
+   face: Face,
+   index: usize
+}
+
+impl Iterator for FaceEdgeIter {
+   type Item = Edge;
+    
+   fn next(&mut self) -> Option<Edge> {
+      if self.index >= 3 {
+         None
+      } else {
+         let edge = Edge::new(self.face.vertex[self.index],
+                              self.face.vertex[(self.index+1) % 3]); 
+         self.index += 1;
+         Some(edge)
+      }
+   }
+   
+}
+
 
 
 #[derive(Clone, Copy)]
@@ -265,6 +331,7 @@ impl Object {
       }
       obj
    }
+
    
    //---------------------------------------------------------------------------
    // Basic Objects
@@ -277,8 +344,8 @@ impl Object {
          obj += Face::new(*centre, *p3, *p2);
       }
       obj += Face::new(*centre,
-                           *spokes.first().unwrap(),
-                           *spokes.last().unwrap());
+                       *spokes.first().unwrap(),
+                       *spokes.last().unwrap());
       
       obj
    }
@@ -347,8 +414,8 @@ impl Object {
             let (v0, v1, v2) = (tri[index], tri[(index+1)%3], tri[(index+2)%3]);
 
             sphere += Face::new(v0,
-                                    ((v0+v1)/2.0).normalize(),
-                                    ((v0+v2)/2.0).normalize());
+                                ((v0+v1)/2.0).normalize(),
+                                ((v0+v2)/2.0).normalize());
          }
 
          let (v0, v1, v2) = (tri[0], tri[1], tri[2]);
@@ -422,16 +489,23 @@ impl Object {
                                     y: 0.0,
                                     z: height };
 
-      for face in &mut self.faces {
-         face.invert();
-      }
+      let mut sides = Object::new();
       
-      for face in &mut self.faces.clone() {
-         face.invert();
-         // let mut new_face: Face = face;
-         *face += offset;
-         self.faces.push(*face);
+      for face in &mut self.faces {
+         // Only consider "upper" faces
+         if face.normal.dot(offset) < 0.0 {
+            let bottom = face.clone(); 
+            *face += offset;
+
+            // Connect with bottom
+            for (top_edge, bottom_edge) in zip(face.edges(), bottom.edges()) {
+               sides += Shape::squarish((bottom_edge.to - bottom_edge.from),
+                                        offset) + bottom_edge.from;
+            }
+         }
       }
+
+      *self += sides;
    }
    
    fn translate(&mut self, by: &Vector) {
@@ -565,12 +639,13 @@ impl Shape {
    }
 
    
-   fn polygon(vertices: Vec<Point>) -> Shape  {
+   fn simple_polygon(vertices: Vec<Point>) -> Shape  {
       let mut shape = Shape::new();
       let p1 = vertices[0];
-      
+
       for (p2, p3) in zip(&vertices[1..], &vertices[2..]) {
-         shape += Face::new(p1, *p2, *p3);
+         let new_face = Face::new(p1, *p2, *p3); 
+         shape += new_face;
       }
       
       shape
@@ -672,7 +747,7 @@ fn read_text_stl(filename: String) -> Option<Object>
 // Main
 //==============================================================================
 
-fn main() {
+fn main()  -> std::io::Result<()> {
    println!("Rust CAD v.0.1");
    println!("==============");
  
@@ -682,9 +757,10 @@ fn main() {
    write_text_stl("test.stl", &rectangle);
    */
    
-   // let object = Object::cylinder(10.0, 10.0);
-   let object = Object::sphere(1.0);
+   let object = Object::cylinder(10.0, 10.0);
+   // let object = Object::sphere(1.0);
    // println!("{}", circle);
-   write_stl("test_bin.stl", &object);
+   write_stl("test_bin.stl", &object)?;
 
+   Ok(())
 }
